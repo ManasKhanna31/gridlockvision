@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+
+# data generated at runtime — keep folders, not contents
+data/uploads/*
+data/evidence/*
+data/sample_videos/*
+data/*.db
+!data/uploads/.gitkeep
+!data/evidence/.gitkeep
+!data/sample_videos/.gitkeep
+
+# model weights (large, trained separately — don't commit)
+backend/app/models_store/*.pt
+!backend/app/models_store/.gitkeep
+
+# YOLO auto-downloaded weights
+*.pt
+yolov8n.pt
+
+.DS_Store
+.idea/
+.vscode/
+*.log

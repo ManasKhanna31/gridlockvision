@@ -1,0 +1,36 @@
+# GridlockVision AI — Python dependencies
+# Tested conceptually against Python 3.10/3.11
+
+# Backend / API
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+sqlalchemy==2.0.30
+pydantic==2.7.4
+
+# Computer Vision
+opencv-python-headless==4.10.0.84
+ultralytics==8.2.50          # YOLOv8 / YOLOv11 detection + ByteTrack tracking
+numpy==1.26.4
+
+# OCR
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2
+torchvision==0.17.2
+easyocr==1.7.1
+
+# Dashboard
+streamlit==1.36.0
+pandas==2.2.2
+plotly==5.22.0
+requests==2.32.3
+
+# Evaluation
+scikit-learn==1.5.0
+
+# Optional: PaddleOCR is an alternative OCR backend (heavier install,
+# better on some non-Latin/skewed plates). Uncomment if preferred over
+# EasyOCR — code in app/ocr/plate_recognition.py would need the reader
+# swapped accordingly.
+# paddleocr==2.7.3
+# paddlepaddle==2.6.1

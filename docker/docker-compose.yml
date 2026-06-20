@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: gridlockvision-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data:/app/data
+    environment:
+      - GRIDLOCK_DB_PATH=/app/data/gridlock.db
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: gridlockvision-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - GRIDLOCK_API_URL=http://backend:8000
+    depends_on:
+      - backend
