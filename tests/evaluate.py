@@ -138,6 +138,92 @@ def evaluate_detection(images_dir: Path, labels_dir: Path, iou_threshold: float 
           f"across confidence thresholds.)")
 
 
+def evaluate_latency(images_dir: Path, db_path: str = ":memory:"):
+    """Computational efficiency benchmark — unlike accuracy metrics, this
+    needs NO ground-truth labels. It runs the real end-to-end pipeline
+    (preprocessing -> detection -> violation rules -> plate OCR/evidence)
+    on whatever images are in images_dir and reports the ACTUAL measured
+    per-stage latency on whatever hardware this process is running on.
+
+    This directly answers the brief's "assess computational efficiency
+    and scalability" requirement with real numbers instead of a
+    fabricated FPS claim. Run it on the same machine/tier you intend to
+    quote results for (e.g. the free-tier Render container) since CPU
+    speed varies a lot across environments — a number measured on a
+    laptop should not be quoted as the deployed service's performance.
+    """
+    if not images_dir.exists():
+        print(
+            f"ERROR: {images_dir} not found. No latency numbers computed.\n"
+            "Point --images at a folder containing a few sample frames "
+            "(reuses files already in data/sample_videos or data/uploads "
+            "works fine — no annotation needed for this benchmark)."
+        )
+        sys.exit(1)
+
+    image_paths = sorted(images_dir.glob("*.jpg")) + sorted(images_dir.glob("*.png"))
+    if not image_paths:
+        print(f"ERROR: no images found in {images_dir}")
+        sys.exit(1)
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db.models import Base
+    from app.core.pipeline import process_frame, reset_session
+
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    reset_session()
+    all_timings = []
+
+    print("=" * 60)
+    print("COMPUTATIONAL EFFICIENCY BENCHMARK (real, measured this run)")
+    print("=" * 60)
+    print(f"Running pipeline on {len(image_paths)} image(s)...\n")
+
+    for img_path in image_paths:
+        frame = cv2.imread(str(img_path))
+        if frame is None:
+            continue
+        result = process_frame(frame, db, is_video_frame=False)
+        timing = result["timing_ms"]
+        all_timings.append(timing)
+        print(f"  {img_path.name}: total={timing['total']:.1f}ms "
+              f"(preprocess={timing['1_preprocessing']:.1f}, "
+              f"detect={timing['2_detection']:.1f}, "
+              f"rules={timing['3_violation_rules']:.1f}, "
+              f"ocr/evidence={timing['4_plate_ocr_and_evidence']:.1f})")
+
+    if not all_timings:
+        print("No images could be processed.")
+        sys.exit(1)
+
+    totals = [t["total"] for t in all_timings]
+    mean_ms = float(np.mean(totals))
+    p95_ms = float(np.percentile(totals, 95))
+    fps = 1000.0 / mean_ms if mean_ms > 0 else 0.0
+
+    print("\n" + "-" * 60)
+    print(f"Frames processed     : {len(all_timings)}")
+    print(f"Mean latency         : {mean_ms:.1f} ms/frame")
+    print(f"P95 latency          : {p95_ms:.1f} ms/frame")
+    print(f"Throughput           : {fps:.2f} FPS (single-frame, no batching, CPU)")
+    print("-" * 60)
+    print(
+        "Scalability note: this is single-process, single-frame, CPU-only "
+        "throughput on whatever machine ran this benchmark. It is NOT a "
+        "multi-camera or concurrent-request figure — concurrent throughput "
+        "would need separate load testing (e.g. Locust against the FastAPI "
+        "endpoint) and was not measured. GPU inference (not used here) "
+        "would substantially change these numbers; do not extrapolate "
+        "this CPU figure to a GPU deployment claim."
+    )
+    db.close()
+
+
 def evaluate_violations(csv_path: Path):
     """Expects a CSV with columns: image_path, true_label (0/1), pred_label
     pre-computed by running Demo Mode on each image and recording whether
@@ -175,7 +261,7 @@ def evaluate_violations(csv_path: Path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GridlockVision AI evaluation harness")
-    parser.add_argument("--mode", choices=["detection", "violations"], required=True)
+    parser.add_argument("--mode", choices=["detection", "violations", "latency"], required=True)
     parser.add_argument("--images", type=str, default="data/test/images")
     parser.add_argument("--labels", type=str, default="data/test/labels")
     parser.add_argument("--csv", type=str, default="data/test/violation_ground_truth.csv")
@@ -183,5 +269,7 @@ if __name__ == "__main__":
 
     if args.mode == "detection":
         evaluate_detection(Path(args.images), Path(args.labels))
-    else:
+    elif args.mode == "violations":
         evaluate_violations(Path(args.csv))
+    else:
+        evaluate_latency(Path(args.images))

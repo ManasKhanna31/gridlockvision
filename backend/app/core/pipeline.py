@@ -54,17 +54,26 @@ def process_frame(
     """Runs the full pipeline on a single frame and returns a structured
     result with every intermediate step, plus any violations persisted
     to the DB with generated evidence.
+
+    Every stage is timed with time.perf_counter() and returned under
+    `timing_ms` — real, measured latency on whatever hardware runs this
+    process, not an estimate.
     """
     steps = {}
+    timing_ms = {}
     now_ts = frame_ts if frame_ts is not None else time.time()
     h, w = frame.shape[:2]
 
     # Step 0: preprocessing
+    _t0 = time.perf_counter()
     processed_frame, preprocess_info = auto_preprocess(frame)
+    timing_ms["1_preprocessing"] = round((time.perf_counter() - _t0) * 1000, 2)
     steps["1_preprocessing"] = preprocess_info
 
     # Step 1: detect + track vehicles/people
+    _t0 = time.perf_counter()
     detections = _detector.detect_and_track(processed_frame, persist=is_video_frame)
+    timing_ms["2_detection"] = round((time.perf_counter() - _t0) * 1000, 2)
     steps["2_detection"] = [
         {"label": d.label, "confidence": d.confidence, "bbox": d.bbox, "track_id": d.track_id,
          "approximated": d.vehicle_type_is_approximated}
@@ -180,9 +189,11 @@ def process_frame(
                     "stub_mode": False,
                 })
 
+    timing_ms["3_violation_rules"] = round((time.perf_counter() - _t0) * 1000, 2)
     steps["4_violations_detected"] = violations_found
 
     # Step: plate recognition + evidence generation + DB persistence
+    _t0 = time.perf_counter()
     persisted = []
     for v in violations_found:
         plate_result = recognize_plate(processed_frame, v["vehicle_bbox"])
@@ -237,8 +248,11 @@ def process_frame(
             "evidence_json_path": evidence["evidence_json_path"],
         })
 
+    timing_ms["4_plate_ocr_and_evidence"] = round((time.perf_counter() - _t0) * 1000, 2)
     steps["5_plate_and_evidence"] = persisted
     steps["6_db_updated"] = True
+
+    timing_ms["total"] = round(sum(timing_ms.values()), 2)
 
     return {
         "camera_id": camera_id,
@@ -247,6 +261,7 @@ def process_frame(
         "violations": persisted,
         "total_detections": len(detections),
         "total_violations": len(persisted),
+        "timing_ms": timing_ms,
     }
 
 

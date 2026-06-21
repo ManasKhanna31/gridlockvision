@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir --default-timeout=1000 --retries=10 -r requiremen
 
 COPY backend/ backend/
 COPY data/ data/
+COPY tests/ tests/
 
 WORKDIR /app/backend
 
